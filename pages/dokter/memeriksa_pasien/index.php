@@ -17,6 +17,11 @@ if ($akses != 'dokter') {
   die();
 }
 
+// Get the logged-in doctor's ID based on their username
+$dokter = query("SELECT id FROM dokter WHERE nama = '$nama'")[0];
+$id_dokter = $dokter['id'];
+
+// Modified query to only show patients for the logged-in doctor
 $pasien = query("SELECT
                   periksa.id AS id_periksa,
                   pasien.id AS id_pasien,
@@ -27,7 +32,9 @@ $pasien = query("SELECT
                   daftar_poli.status_periksa AS status_periksa
                 FROM pasien 
                 INNER JOIN daftar_poli ON pasien.id = daftar_poli.id_pasien
-                LEFT JOIN periksa ON daftar_poli.id = periksa.id_daftar_poli");
+                INNER JOIN jadwal_periksa ON daftar_poli.id_jadwal = jadwal_periksa.id
+                LEFT JOIN periksa ON daftar_poli.id = periksa.id_daftar_poli
+                WHERE jadwal_periksa.id_dokter = $id_dokter");
 
 $periksa = query("SELECT * from periksa");
 
@@ -45,14 +52,12 @@ ob_start(); ?>
 </ol>
 <?php
 $breadcrumb = ob_get_clean();
-// ob_flush();
 
 // Title Section
 ob_start(); ?>
 Daftar Periksa Pasien
 <?php
 $main_title = ob_get_clean();
-// ob_flush();
 
 // Content section
 ob_start();
@@ -69,23 +74,28 @@ ob_start();
                 </tr>
               </thead>
               <tbody>
-                <?php foreach ($pasien as $pasiens) : ?>
+                <?php if (empty($pasien)) : ?>
                   <tr>
-                    <td id="id" class="text-center"><?= $pasiens["no_antrian"] ?></td>
-                    <td><?= $pasiens["nama_pasien"] ?></td>
-                    <td><?= $pasiens["keluhan"] ?></td>
-
-                    <td>
-                      <?php if ($pasiens["status_periksa"] == 0) { ?>
-                        <!-- <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#modalTambahPeriksa">Periksa</button> -->
-                        <a href="create.php/<?= $pasiens['id_pasien'] ?>" class="btn btn-primary"><i class="fas fa-stethoscope"></i> Periksa </a>
+                    <td colspan="4" class="text-center">Tidak ada data</td>
+                  </tr>
+                <?php else : ?>
+                  <?php foreach ($pasien as $pasiens) : ?>
+                    <tr>
+                      <td id="id" class="text-center"><?= $pasiens["no_antrian"] ?></td>
+                      <td><?= $pasiens["nama_pasien"] ?></td>
+                      <td><?= $pasiens["keluhan"] ?></td>
+                      <td>
+                        <?php if ($pasiens["status_periksa"] == 0) { ?>
+                          <a href="create.php/<?= $pasiens['id_pasien'] ?>" class="btn btn-primary"><i class="fas fa-stethoscope"></i> Periksa </a>
                         <?php } else { ?>
                           <a href="edit.php/<?= $pasiens['id_periksa'] ?>" class="btn btn-warning"><i class="fa fa-edit"></i> Edit </a>
-                      <?php } ?>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
+                        <?php } ?>
+                      </td>
+                    </tr>
+                  <?php endforeach; ?>
+                <?php endif; ?>
               </tbody>
+
             </table>
           </div>
         </div>
@@ -103,7 +113,6 @@ ob_start();
               <div class="modal-body">
                 <!-- Form untuk menambahkan data periksa -->
                 <form action="" method="POST">
-                  <!-- Kolom input untuk menambahkan data -->
                   <div class="form-group">
                     <label for="nama_pasien">Nama Pasien</label>
                     <input type="text" class="form-control" id="nama_pasien" name="nama_pasien" value="<?= $pasiens["nama_pasien"] ?>" disabled>
@@ -128,7 +137,6 @@ ob_start();
                     </select>
                   </div>
 
-                  <!-- Tombol untuk mengirim form -->
                   <button type="submit" class="btn btn-primary" id="simpan_periksa" name="simpan_periksa">Simpan</button>
                 </form>
               </div>
@@ -154,11 +162,6 @@ ob_start();
     </div>
 
     <?php
-$content = ob_get_clean();
-// ob_flush();
-
-// // JS Section
-// ob_start();
-?>
-
-  <?php include_once "../../../layouts/index.php"; ?>
+      $content = ob_get_clean();
+      include_once "../../../layouts/index.php";
+    ?>

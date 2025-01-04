@@ -16,10 +16,15 @@ if ($akses != 'dokter') {
   echo "<meta http-equiv='refresh' content='0; url=../..'>";
   die();
 }
+
+// Get the logged-in doctor's ID
+$stmt = $pdo->prepare("SELECT id FROM dokter WHERE nama = ?");
+$stmt->execute([$nama]);
+$dokter = $stmt->fetch();
+$id_dokter = $dokter['id'];
 ?>
 <?php
 $title = 'Poliklinik | Riwayat Pasien';
-// Breadcrumb section
 ob_start(); ?>
 <ol class="breadcrumb float-sm-right">
   <li class="breadcrumb-item"><a href="<?= $base_dokter; ?>">Home</a></li>
@@ -27,16 +32,12 @@ ob_start(); ?>
 </ol>
 <?php
 $breadcrumb = ob_get_clean();
-// ob_flush();
 
-// Title Section
 ob_start(); ?>
 Riwayat Pasien
 <?php
 $main_title = ob_get_clean();
-// ob_flush();
 
-// Content section
 ob_start();
 ?>
 <div class="card">
@@ -59,11 +60,19 @@ ob_start();
       <tbody>
         <?php
         $index = 1;
-        $data = $pdo->query("SELECT * FROM pasien");
-        if ($data->rowCount() == 0) {
+        // Modified query to only show patients who have appointments with the logged-in doctor
+        $query = "SELECT DISTINCT p.* 
+                 FROM pasien p 
+                 INNER JOIN daftar_poli dp ON p.id = dp.id_pasien
+                 INNER JOIN jadwal_periksa jp ON dp.id_jadwal = jp.id 
+                 WHERE jp.id_dokter = :id_dokter";
+        $stmt = $pdo->prepare($query);
+        $stmt->execute(['id_dokter' => $id_dokter]);
+        
+        if ($stmt->rowCount() == 0) {
           echo "<tr><td colspan='7' align='center'>Tidak ada data</td></tr>";
         } else {
-          while ($d = $data->fetch()) {
+          while ($d = $stmt->fetch()) {
         ?>
             <tr>
               <td><?= $index++; ?></td>
@@ -77,26 +86,34 @@ ob_start();
                 </button>
               </td>
             </tr>
-            <!-- Modal Detail Riwayat Periksa start here -->
+            <!-- Modal Detail Riwayat Periksa -->
           <?php
           $no = 1;
           $pasien_id = $d['id'];
-          $data2 = $pdo->query("SELECT 
-                                  p.nama AS 'nama_pasien',
-                                  pr.*,
-                                  d.nama AS 'nama_dokter',
-                                  dpo.keluhan AS 'keluhan',
-                                  GROUP_CONCAT(o.nama_obat SEPARATOR ', ') AS 'obat'
-                              FROM periksa pr
-                              LEFT JOIN daftar_poli dpo ON (pr.id_daftar_poli = dpo.id)
-                              LEFT JOIN jadwal_periksa jp ON (dpo.id_jadwal = jp.id)
-                              LEFT JOIN dokter d ON (jp.id_dokter = d.id)
-                              LEFT JOIN pasien p ON (dpo.id_pasien = p.id)
-                              LEFT JOIN detail_periksa dp ON (pr.id = dp.id_periksa)
-                              LEFT JOIN obat o ON (dp.id_obat = o.id)
-                              WHERE dpo.id_pasien = '$pasien_id'
-                              GROUP BY pr.id
-                              ORDER BY pr.tgl_periksa DESC;");
+          // Modified query to only show records for the logged-in doctor
+          $detail_query = "SELECT 
+                            p.nama AS 'nama_pasien',
+                            pr.*,
+                            d.nama AS 'nama_dokter',
+                            dpo.keluhan AS 'keluhan',
+                            GROUP_CONCAT(o.nama_obat SEPARATOR ', ') AS 'obat'
+                        FROM periksa pr
+                        LEFT JOIN daftar_poli dpo ON (pr.id_daftar_poli = dpo.id)
+                        LEFT JOIN jadwal_periksa jp ON (dpo.id_jadwal = jp.id)
+                        LEFT JOIN dokter d ON (jp.id_dokter = d.id)
+                        LEFT JOIN pasien p ON (dpo.id_pasien = p.id)
+                        LEFT JOIN detail_periksa dp ON (pr.id = dp.id_periksa)
+                        LEFT JOIN obat o ON (dp.id_obat = o.id)
+                        WHERE dpo.id_pasien = :pasien_id
+                        AND jp.id_dokter = :dokter_id
+                        GROUP BY pr.id
+                        ORDER BY pr.tgl_periksa DESC";
+          
+          $stmt2 = $pdo->prepare($detail_query);
+          $stmt2->execute([
+            'pasien_id' => $pasien_id,
+            'dokter_id' => $id_dokter
+          ]);
           ?>
           <div class="modal fade" id="detailModal<?= $d['id'] ?>" tabindex="-1" role="dialog" aria-labelledby="exampleModalScrollableTitle" aria-hidden="true" data-backdrop="static" >
             <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered" role="document">
@@ -108,8 +125,7 @@ ob_start();
                   </button>
                 </div>
                 <div class="modal-body">
-                  <!-- Mulai Tabel -->
-                  <?php if ($data2->rowCount() == 0) : ?>
+                  <?php if ($stmt2->rowCount() == 0) : ?>
                     <h5>Tidak Ditemukan Riwayat Periksa</h5>
                   <?php else : ?>
                     <div class="grid-container">
@@ -121,7 +137,7 @@ ob_start();
                       <div class="grid-item">Catatan</div>
                       <div class="grid-item">Obat</div>
                       <div class="grid-item">Biaya Periksa</div>
-                      <?php while ($da = $data2->fetch()) : ?>
+                      <?php while ($da = $stmt2->fetch()) : ?>
                         <div class="grid-item"><?= $no++; ?></div>
                         <div class="grid-item"><?= $da['tgl_periksa']; ?></div>
                         <div class="grid-item"><?= $da['nama_pasien']; ?></div>
@@ -134,7 +150,6 @@ ob_start();
                       <?php $no = 1; ?>
                     </div>
                   <?php endif ?>
-                  <!-- Akhir dari Tabel -->
                 </div>
                 <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
@@ -142,7 +157,6 @@ ob_start();
               </div>
             </div>
           </div>
-          <!-- Modal Detail Riwayat Periksa ends here -->
         <?php }
         } ?>
       </tbody>
@@ -150,8 +164,9 @@ ob_start();
   </div>
 </div>
 <?php
+
 $content = ob_get_clean();
-// ob_flush();
+
 ?>
 
 <?php include '../../../layouts/index.php'; ?>
