@@ -56,25 +56,49 @@ function tambahJadwalPeriksa($data)
         $jam_selesai = $data["jam_selesai"];
         $aktif = 'T';
 
-        // Check if the jadwal periksa already exists for another dokter
+        // First, get the poli_id of the current doctor
+        $query_dokter = "SELECT id_poli FROM dokter WHERE id = ?";
+        $stmt_dokter = $conn->prepare($query_dokter);
+        $stmt_dokter->bind_param('i', $id_dokter);
+        $stmt_dokter->execute();
+        $result_dokter = $stmt_dokter->get_result();
+        $dokter_data = $result_dokter->fetch_assoc();
+        $poli_id = $dokter_data['id_poli'];
+        $stmt_dokter->close();
+
+        // Check if the jadwal periksa already exists for another dokter in the same poli
         $query_existing = "
-            SELECT * FROM jadwal_periksa 
-            WHERE id_dokter != ? 
-              AND hari = ? 
-              AND (
-                  (jam_mulai <= ? AND jam_selesai >= ?) OR 
-                  (jam_mulai <= ? AND jam_selesai >= ?) OR 
-                  (jam_mulai >= ? AND jam_selesai <= ?)
-              )
+            SELECT jp.* 
+            FROM jadwal_periksa jp
+            INNER JOIN dokter d ON jp.id_dokter = d.id
+            WHERE d.id_poli = ? 
+            AND jp.id_dokter != ? 
+            AND jp.hari = ? 
+            AND (
+                (jp.jam_mulai <= ? AND jp.jam_selesai >= ?) OR 
+                (jp.jam_mulai <= ? AND jp.jam_selesai >= ?) OR 
+                (jp.jam_mulai >= ? AND jp.jam_selesai <= ?)
+            )
         ";
+
         $stmt = $conn->prepare($query_existing);
-        $stmt->bind_param('isssssss', $id_dokter, $hari, $jam_mulai, $jam_mulai, $jam_selesai, $jam_selesai, $jam_mulai, $jam_selesai);
+        $stmt->bind_param('iisssssss', 
+            $poli_id, 
+            $id_dokter, 
+            $hari, 
+            $jam_mulai, 
+            $jam_mulai, 
+            $jam_selesai, 
+            $jam_selesai, 
+            $jam_mulai, 
+            $jam_selesai
+        );
         $stmt->execute();
         $stmt->store_result();
 
         if ($stmt->num_rows > 0) {
             $stmt->close();
-            return -2; // Return -2 if the jadwal periksa already exists
+            return -2; // Return -2 if the jadwal periksa already exists in the same poli
         }
 
         $stmt->close();
